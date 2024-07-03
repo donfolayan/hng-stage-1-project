@@ -5,3 +5,34 @@ mayowa; dev, www-data
 donald; sudo
 michael; dev
 folayan; sudo
+donald; sudo
+cameron; dev
+user1;group1,group2
+user2;group3
+user3
+user4; sudo
+donaldmichael; dev, www-data
+
+
+
+
+
+
+
+
+ddd
+fff
+ggg
+
+
+
+
+
+
+
+
+
+
+
+
+donfolayan; sudo

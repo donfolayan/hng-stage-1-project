@@ -1,97 +1,87 @@
 #!/bin/bash
 
-# Run as root
-
-if [[ $EID -ne 0 ]]; then
-	echo "Run this script as root" >&2
-	exit 1
+# Ensure script runs as root (check and exit if not)
+if [[ $EUID -ne 0 ]]; then
+  echo "Error: This script requires root privileges."
+  echo "Please run with sudo: sudo ./create_users.sh"
+  exit 1
 fi
 
-
-# Check input
-
-if [ -z "$1" ]; then
-	echo "Usage: bash $0 <name-of-file-containing-employee-names-and-password>"
-	exit 1
+# Check if input file provided
+if [ $# -eq 0 ]; then
+  echo "Error: Please provide an input file name as an argument."
+  exit 1
 fi
 
-INPUT_FILE=$1
+input_file="$1"
 
-# Check /var/secure
-
-mkdir -p /var/secure
-chmod 700 /var/secure
-
-# Password file
-PASSWORD_FILE="/var/secure/user_password.csv"
-
-# Log Messages
-
+# Function for logging messages
 log_message() {
-	local MESSAGE=$1
-	echo "$(date +'%Y-%m-%d %H:%M:%S') - $MESSAGE" >> /var/log/user_management.log
+  local message="$1"
+  echo "$(date +'%Y-%m-%d %H:%M:%S') - $message" >> /var/log/user_management.log
 }
 
+# Create necessary directories with permissions
+mkdir -p /var/secure /var/log
+chmod 750 /var/secure /var/log
+
 # Initialize log file
+touch /var/log/user_management.log
+chmod 640 /var/log/user_management.log
 
-echo "User Management Script Log" > /var/log/user_management.log
+# Initialize password file with secure permissions
+touch /var/secure/user_passwords.csv
+chmod 600 /var/secure/user_passwords.csv
 
-# Initialize password file
-#
-echo "username,password" > $PASSWORD_FILE
-chmod 600 $PASSWORD_FILE
+# Loop through each line in the input file
+while IFS=';' read -r username groups; do
+  
+  # Remove leading/trailing whitespaces from the entire line
+  trimmed_line=$(echo "$line" | tr -d ' ')
 
-# Read the input file
+  # Remove leading/trailing whitespace
+  username="${trimmed_line%%;*}"
+  groups="${trimmed_line##*;}"
 
-while IFS=';' read -r USERNAME GROUPS; do
-	if [ -z "$USERNAME" ]; then
-		continue
-	fi
+  # Check if user already exists
+  if getent passwd "$username" &>/dev/null; then
+    log_message "User '$username' already exists."
+    continue
+  fi
 
-	# Remove whitespace
-	USERNAME=$(echo "$USERNAME" | xargs)
-	GROUPS=$(echo "$GROUPS" | xargs)
+  # Create user and personal group
+  useradd -m -s /bin/bash "$username"
+  log_message "Created user '$username' and group '$username' is automatically created by the useradd command."
 
-	# Create the user if it does not exist already
-	if id "$USERNAME" &>/dev/null; then
-		log_message "User $USERNAME already exists"
-	else
-		useradd -m -s /bin/bash "$USERNAME"
-		log_message "Created user $USERNAME"
-	fi
+  # Create/add user to additional groups
+  for group in $(echo "$groups" | tr ',' ' '); do
+    if ! getent group "$group" &>/dev/null; then
+      groupadd "$group"
+      log_message "Created group '$group'."
+    fi
+    usermod -a -G "$group" "$username"
+  done
 
-	# Create group for each user corresponding to username
-	if ! getent group "$USERNAME" &>/dev/null; then
-		groupadd "$USERNAME"
-		log_message "Created personal group $USERNAME"
-	fi
+  # Ensure home directory exists and set permissions
+  home_dir="/home/$username"
+  if [ ! -d "$home_dir" ]; then
+    mkdir "$home_dir"
+  fi
+  chown "$username:$username" "$home_dir"
+  chmod 700 "$home_dir"
 
-	# Add user to additional groups
-	if [ -n "$GROUPS"]; then
-		IFS=',' read -r -a GROUP_ARRAY <<< "$GROUPS"
-			for GROUP in "${GROUP_ARRAY[@]}"; do
-			# Remove whitespace
-			GROUP=$(echo "$GROUP" | xargs)
-			if !getent group "$GROUP" &>/dev/null; then
-				groupadd "$GROUP"
-				log_message "Created group $GROUP"
-			fi
-			usermod -aG "$GROUP" "$USERNAME"
-			log_message "Added $USERNAME to group $GROUP"
-		done
-	fi
+  # Generate random password, store securely, and update log
+  password=$(head /dev/urandom | tr -dc A-Za-z0-9 | fold -w 16 | head -n 1)
+  echo "$username,$password" >> /var/secure/user_passwords.csv
+  log_message "Generated password for user '$username' and stored securely."
 
-	# Set up home directory permissions
-	chmod 700 /home/"$USERNAME"
-	chmod "$USERNAME":"$USERNAME" /home/"$USERNAME"
+  # Set user password (may require shadow utilities package)
+  echo "$username:$password" | chpasswd -e /etc/shadow
 
-	#Generate random password
-	PASSWORD=$(openssl rand -base64 12)
-	echo "$USERNAME,$PASSWORD" >> $PASSWORD_FILE
-	echo "$USERNAME:$PASSWORD" | chpasswd
-	log_message "Set password for user $USERNAME"
-done < "$INPUT_FILE"
+  # Informative message about successful user creation
+  echo "User '$username' created successfully with password stored in /var/secure/user_passwords.csv (READ-ONLY)."
+  log_message "User '$username' creation completed."
 
-log_message "User creation process completed"
-echo "Script executed sucessfully. Check /var/log/user_management.log for  details"
+done < "$input_file"
 
+echo "User creation script completed. Refer to /var/log/user_management.log for details."
