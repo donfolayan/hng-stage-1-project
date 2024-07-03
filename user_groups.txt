@@ -1,0 +1,7 @@
+light; sudo, dev, www-data
+idimma; sudo
+mayowa; sudo
+mayowa; dev, www-data
+donald; sudo
+michael; dev
+folayan; sudo
