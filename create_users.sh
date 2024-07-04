@@ -35,14 +35,12 @@ chmod 600 /var/secure/user_passwords.csv
 
 # Loop through each line in the input file
 while IFS=';' read -r username groups; do
-  
-  # Remove leading/trailing whitespaces from the entire line
-  trimmed_line=$(echo "$line" | tr -d ' ')
 
   # Remove leading/trailing whitespace
-  username="${trimmed_line%%;*}"
-  groups="${trimmed_line##*;}"
-
+  username="${username##* }"
+  username="${username%% *}"
+  groups="${groups##* }"
+  groups="${groups%% *}"
   # Check if user already exists
   if getent passwd "$username" &>/dev/null; then
     log_message "User '$username' already exists."
@@ -51,7 +49,7 @@ while IFS=';' read -r username groups; do
 
   # Create user and personal group
   useradd -m -s /bin/bash "$username"
-  log_message "Created user '$username' and group '$username' is automatically created by the useradd command."
+  log_message "Created user '$username' and group '$username'."
 
   # Create/add user to additional groups
   for group in $(echo "$groups" | tr ',' ' '); do
