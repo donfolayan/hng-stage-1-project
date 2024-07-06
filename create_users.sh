@@ -21,6 +21,20 @@ log_message() {
   echo "$(date +'%Y-%m-%d %H:%M:%S') - $message" >> /var/log/user_management.log
 }
 
+# Function for adding to group
+group_add() {
+  IFS=',' read -ra group_array <<< "$groups"  # Read groups into an array
+  for group in "${group_array[@]}"; do
+    if ! getent group "$group" &>/dev/null; then
+      groupadd "$group"
+      log_message "Created group '$group'."
+    fi
+    usermod -a -G "$group" "$username"
+    log_message "User: $username added to group: $group"
+  done
+}
+
+
 # Create necessary directories with permissions
 mkdir -p /var/secure /var/log
 chmod 750 /var/secure /var/log
@@ -46,26 +60,30 @@ while IFS=';' read -r username groups; do
   if [ -z "$username" ]; then
     continue
   fi
-
-  # Check if user already exists
+  
+  # Check if user exists
   if id "$username" &>/dev/null; then
-    log_message "User '$username' already exists."
-    continue
+    log_message "User $username already exists"
+    group_add 
+   continue
+  else
+  # Create user and personal group
+    useradd -m -s /bin/bash "$username"
+    log_message "Created user '$username' and group '$username'."
   fi
 
-  # Create user and personal group
-  useradd -m -s /bin/bash "$username"
-  log_message "Created user '$username' and group '$username'."
-
   # Create/add user to additional groups
-  for group in $(echo "$groups" | tr ',' ' '); do
-    if ! getent group "$group" &>/dev/null; then
-      groupadd "$group"
-      log_message "Created group '$group'."
-    fi
+  if [ -n "$groups" ]; then
+    IFS=',' read -ra groupName <<< "$groups"
+    for group in $(echo "$groups" | tr ',' ' '); do
+      if ! getent group "$group" &>/dev/null; then
+        groupadd "$group"
+        log_message "Created group '$group'."
+      fi
     usermod -a -G "$group" "$username"
     log_message "User: $username added to group: $group"
-  done
+    done
+  fi
 
   # Ensure home directory exists and set permissions
   home_dir="/home/$username"
