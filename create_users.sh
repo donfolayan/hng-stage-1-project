@@ -41,8 +41,14 @@ while IFS=';' read -r username groups; do
   username="${username%% *}"
   groups="${groups##* }"
   groups="${groups%% *}"
+
+  # Skip empty lines
+  if [ -z "$username" ]; then
+    continue
+  fi
+
   # Check if user already exists
-  if getent passwd "$username" &>/dev/null; then
+  if id "$username" &>/dev/null; then
     log_message "User '$username' already exists."
     continue
   fi
@@ -58,6 +64,7 @@ while IFS=';' read -r username groups; do
       log_message "Created group '$group'."
     fi
     usermod -a -G "$group" "$username"
+    log_message "User: $username added to group: $group"
   done
 
   # Ensure home directory exists and set permissions
@@ -73,10 +80,10 @@ while IFS=';' read -r username groups; do
   echo "$username,$password" >> /var/secure/user_passwords.csv
   log_message "Generated password for user '$username' and stored securely."
 
-  # Set user password (may require shadow utilities package)
+  # Set user password
   echo "$username:$password" | chpasswd -e /etc/shadow
 
-  # Informative message about successful user creation
+  # Successful user creation
   echo "User '$username' created successfully with password stored in /var/secure/user_passwords.csv (READ-ONLY)."
   log_message "User '$username' creation completed."
 
